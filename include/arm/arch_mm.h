@@ -39,6 +39,8 @@ extern paddr_t physical_address_offset;	/* Add this to a virtual address to get 
 #define FIX_CON_START   (FIX_CON_TOP - SZ_2M)
 #define FIX_GIC_TOP     (FIX_CON_START)
 #define FIX_GIC_START   (FIX_GIC_TOP - SZ_2M)
+#define FIX_XS_TOP      (FIX_GIC_START)
+#define FIX_XS_START    (FIX_XS_TOP - SZ_2M)
 
 /*
  * Memory types available.

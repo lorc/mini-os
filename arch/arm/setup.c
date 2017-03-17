@@ -62,6 +62,19 @@ static xen_pfn_t map_console(xen_pfn_t mfn)
     return (xen_pfn_t) (FIX_CON_START + (phys & L2_OFFSET));
 }
 
+static xen_pfn_t map_xenbus(xen_pfn_t mfn)
+{
+    paddr_t phys;
+
+    phys = PFN_PHYS(mfn);
+    xprintk("map_xenbus, phys = 0x%lx\n", phys);
+
+    set_pgt_entry(&fixmap_pgtable[l2_pgt_idx(FIX_XS_START)],
+                  ((phys & L2_MASK) | BLOCK_DEV_ATTR | L2_BLOCK));
+
+    return (xen_pfn_t) (FIX_XS_START + (phys & L2_OFFSET));
+}
+
 static void get_console(void)
 {
     uint64_t v = -1;
@@ -91,7 +104,12 @@ void get_xenbus(void)
 
     if(hvm_get_parameter(HVM_PARAM_STORE_PFN, &value))
         BUG();
-    start_info.store_mfn = (unsigned long)value;
+#if defined(__aarch64__)
+    start_info.store_mfn = map_xenbus(value);
+#else
+    start_info.store_mfn = value;
+#endif
+    printk("xenbus mfn(pfn?) = %lx\n", start_info.store_mfn);
 }
 
 /*

@@ -195,12 +195,12 @@ char *xenbus_wait_for_state_change(const char* path, XenbusState *state, xenbus_
 static void xenbus_thread_func(void *ign)
 {
     struct xsd_sockmsg msg;
-    unsigned prod = xenstore_buf->rsp_prod;
-
-    for (;;) 
+    unsigned prod;
+    prod =  xenstore_buf->rsp_prod;
+    for (;;)
     {
         wait_event(xb_waitq, prod != xenstore_buf->rsp_prod);
-        while (1) 
+        while (1)
         {
             prod = xenstore_buf->rsp_prod;
             DEBUG("Rsp_cons %d, rsp_prod %d.\n", xenstore_buf->rsp_cons,
@@ -212,7 +212,7 @@ static void xenbus_thread_func(void *ign)
                     &msg,
                     MASK_XENSTORE_IDX(xenstore_buf->rsp_cons),
                     sizeof(msg));
-            DEBUG("Msg len %d, %d avail, id %d.\n",
+            DEBUG("Msg len %lu, %d avail, id %d.\n",
                     msg.len + sizeof(msg),
                     xenstore_buf->rsp_prod - xenstore_buf->rsp_cons,
                     msg.req_id);
@@ -330,7 +330,11 @@ void init_xenbus(void)
 {
     int err;
     DEBUG("init_xenbus called.\n");
+#if defined (__arm__)
     xenstore_buf = mfn_to_virt(start_info.store_mfn);
+#else
+    xenstore_buf = (struct xenstore_domain_interface *)(start_info.store_mfn);
+#endif
     create_thread("xenstore", xenbus_thread_func, NULL);
     DEBUG("buf at %p.\n", xenstore_buf);
     err = bind_evtchn(start_info.store_evtchn,
