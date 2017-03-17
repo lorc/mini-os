@@ -26,6 +26,9 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#define __XEN_TOOLS__
+//#define __XEN_INTERFACE_VERSION__  0x0003020a
+
 #include <mini-os/os.h>
 #include <mini-os/hypervisor.h>
 #include <mini-os/mm.h>
@@ -44,6 +47,8 @@
 #include <fcntl.h>
 #include <xen/features.h>
 #include <xen/version.h>
+#include <xen/domctl.h>
+#include <xen/hvm/params.h>
 
 #ifdef CONFIG_XENBUS
 static unsigned int do_shutdown = 0;
@@ -72,7 +77,7 @@ int rand(void)
     return previous;
 }
 #endif
-
+extern void (*IRQ_handler)(void);
 static void periodic_thread(void *p)
 {
     struct timeval tv;
@@ -80,8 +85,9 @@ static void periodic_thread(void *p)
     for(;;)
     {
         gettimeofday(&tv, NULL);
-        printk("T(s=%ld us=%ld)\n", tv.tv_sec, tv.tv_usec);
+//        printk("T(s=%ld us=%ld)\n", tv.tv_sec, tv.tv_usec);
         msleep(1000);
+//	IRQ_handler();
     }
 }
 
@@ -534,7 +540,7 @@ void app_shutdown(unsigned reason)
 static void shutdown_thread(void *p)
 {
     DEFINE_WAIT(w);
-
+    printk("Shutdown_Thread waiting\n");
     while (1) {
         add_waiter(w, shutdown_queue);
         rmb();
@@ -551,6 +557,113 @@ static void shutdown_thread(void *p)
     HYPERVISOR_shutdown(shutdown_reason);
 }
 #endif
+
+static int hvm_get_parameter(int domid, int idx, uint64_t *value)
+{
+    struct xen_hvm_param xhv;
+    int ret;
+
+    xhv.domid = domid;
+    xhv.index = idx;
+    ret = HYPERVISOR_hvm_op(HVMOP_get_param, &xhv);
+    if (ret == 0)
+	*value = xhv.value;
+    return ret;
+}
+
+static int monitor_control(int domain_id, unsigned int op, unsigned int event)
+{
+    struct xen_domctl domctl;
+    int rc;
+
+    domctl.interface_version = XEN_DOMCTL_INTERFACE_VERSION;
+    domctl.cmd = XEN_DOMCTL_monitor_op;
+    domctl.domain = domain_id;
+    domctl.u.monitor_op.op = op;
+    domctl.u.monitor_op.event = event;
+
+    rc = HYPERVISOR_domctl((unsigned long)&domctl);
+    printk("monitor_control rc = %d\n", rc);
+
+    return rc;
+}
+
+static int vm_event_control(int domain_id, unsigned int op,
+			    unsigned int mode, uint32_t *port)
+{
+    struct xen_domctl domctl;
+    int rc;
+
+    domctl.interface_version = XEN_DOMCTL_INTERFACE_VERSION;
+    domctl.cmd = XEN_DOMCTL_vm_event_op;
+    domctl.domain = domain_id;
+    domctl.u.vm_event_op.op = op;
+    domctl.u.vm_event_op.mode = mode;
+
+    rc = HYPERVISOR_domctl((unsigned long)&domctl);
+
+    if ( !rc && port )
+        *port = domctl.u.vm_event_op.port;
+    return rc;
+}
+
+static int setup_ring(int domid)
+{
+    int rc;
+    uint64_t evt_ring_pfn = 0;;
+    rc = hvm_get_parameter(domid, HVM_PARAM_MONITOR_RING_PFN, &evt_ring_pfn);
+    printk("get ring pfn ret = %d pfn=%lX\n", rc, evt_ring_pfn);
+
+    return rc;
+}
+
+static uint32_t local_port, remote_port;
+static int _domid;
+
+static void monitor_handler(evtchn_port_t port, struct pt_regs *regs, void *ignore)
+{
+    vm_event_control(_domid, XEN_VM_EVENT_RESUME, XEN_DOMCTL_VM_EVENT_OP_MONITOR, 0);
+}
+
+static void enable_monitor(int domid)
+{
+    int rc;
+    uint32_t port = 0xFFFFFFFF;
+    _domid = domid;
+    rc = setup_ring(domid);
+    if (rc != 0) {
+	printk("evt ring setup failed rc = %d\n", rc);
+	return;
+    }
+
+    rc = vm_event_control(domid, XEN_VM_EVENT_ENABLE, XEN_DOMCTL_VM_EVENT_OP_MONITOR, &port);
+    if (rc == 0)
+	printk("event port = %d\n", port);
+    else
+	return;
+    remote_port = port;
+    rc = evtchn_bind_interdomain(domid, port, monitor_handler, NULL, &local_port);
+    if (rc != 0) {
+	printk("failed to bind eventchannel: rc = %d\n", rc);
+	return;
+    }
+    printk("local port = %d\n", local_port);
+    unmask_evtchn(local_port);
+    rc = monitor_control(domid, XEN_DOMCTL_MONITOR_OP_ENABLE, XEN_DOMCTL_MONITOR_EVENT_PRIVILEGED_CALL);
+    if (rc != 0) {
+	printk("failed to enable SMC handler: rc = %d\n", rc);
+	return;
+    }
+}
+
+static void smc_thread(void *p)
+{
+    printk("Trying to install monitor event handler\n");
+    enable_monitor(1);
+    while(1) {
+	schedule();
+    };
+}
 
 int app_main(start_info_t *si)
 {
@@ -575,5 +688,7 @@ int app_main(start_info_t *si)
 #ifdef CONFIG_XENBUS
     create_thread("shutdown", shutdown_thread, si);
 #endif
+    create_thread("smc_thread", smc_thread, si);
+    printk("appmain: Returning\n");
     return 0;
 }
