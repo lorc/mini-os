@@ -6,6 +6,8 @@
 #include <arch_mm.h>
 #include <arch_limits.h>
 
+lr      .req    x30             // link register
+
 #define MAIR(attr, mt)  ((attr) << ((mt) * 8))
 #define TCR_FLAGS       (TCR_IRGN_WBWA | TCR_ORGN_WBWA | TCR_SHARED)
 #define PT_PT           0x3
@@ -388,9 +390,6 @@ ENTRY(_setup_idmap_pgtable)
     ret
 ENDPROC(_setup_idmap_pgtable)
 
-ENTRY(arm_start_thread)
-ENDPROC(arm_start_thread)
-
 /*
  * There are no PUSH/POP instruction in ARMv8.
  * Use STR and LDR for stack accesses.
@@ -610,8 +609,35 @@ el1_error_invalid:
 ENDPROC(el1_error_invalid)
 
 ENTRY(thread_starter)
+	ret
 ENDPROC(thread_starter)
 
 ENTRY(__arch_switch_threads)
+	// r0 - prev sp
+	// r1 - next sp
+	// actually we are not obligued to save/restore x9
+        stp     x29, x9, [sp,#-16]!
+        stp     x27, x28, [sp,#-16]!
+        stp     x25, x26, [sp,#-16]!
+        stp     x23, x24, [sp,#-16]!
+        stp     x21, x22, [sp,#-16]!
+        stp     x19, x20, [sp,#-16]!              // store callee-saved registers
+        mov     x9, sp
+        stp     x9, lr, [x0]
+
+	ldp	x9, lr, [x1]
+	mov	sp, x9
+        ldp     x19, x20, [sp], #16             // restore callee-saved registers
+        ldp     x21, x22, [sp], #16
+        ldp     x23, x24, [sp], #16
+        ldp     x25, x26, [sp], #16
+        ldp     x27, x28, [sp], #16
+        ldp     x29, x9, [sp], #16
+        ret
 ENDPROC(__arch_switch_threads)
 
+ENTRY(arm_start_thread)
+	ldp x0, x1, [sp], #16	// parameter in x0, entry point in x1
+	ldr lr, =exit_thread
+	br x1
+ENDPROC(arm_start_thread)
