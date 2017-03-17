@@ -54,9 +54,6 @@
 #define XEN_GUEST_HANDLE(name)          __XEN_GUEST_HANDLE(name)
 #define XEN_GUEST_HANDLE_PARAM(name)    XEN_GUEST_HANDLE(name)
 #define set_xen_guest_handle_raw(hnd, val)  do { (hnd).p = val; } while (0)
-#ifdef __XEN_TOOLS__
-#define get_xen_guest_handle(val, hnd)  do { val = (hnd).p; } while (0)
-#endif
 #define set_xen_guest_handle(hnd, val) set_xen_guest_handle_raw(hnd, val)
 
 #if defined(__i386__)
@@ -255,8 +252,46 @@ struct arch_shared_info {
     unsigned long p2m_cr3;         /* cr3 value of the p2m address space */
     unsigned long p2m_vaddr;       /* virtual address of the p2m list */
     unsigned long p2m_generation;  /* generation count of p2m mapping */
+#ifdef __i386__
+    /* There's no room for this field in the generic structure. */
+    uint32_t wc_sec_hi;
+#endif
 };
 typedef struct arch_shared_info arch_shared_info_t;
+
+#if defined(__XEN__) || defined(__XEN_TOOLS__)
+/*
+ * struct xen_arch_domainconfig's ABI is covered by
+ * XEN_DOMCTL_INTERFACE_VERSION.
+ */
+struct xen_arch_domainconfig {
+#define _XEN_X86_EMU_LAPIC          0
+#define XEN_X86_EMU_LAPIC           (1U<<_XEN_X86_EMU_LAPIC)
+#define _XEN_X86_EMU_HPET           1
+#define XEN_X86_EMU_HPET            (1U<<_XEN_X86_EMU_HPET)
+#define _XEN_X86_EMU_PM             2
+#define XEN_X86_EMU_PM              (1U<<_XEN_X86_EMU_PM)
+#define _XEN_X86_EMU_RTC            3
+#define XEN_X86_EMU_RTC             (1U<<_XEN_X86_EMU_RTC)
+#define _XEN_X86_EMU_IOAPIC         4
+#define XEN_X86_EMU_IOAPIC          (1U<<_XEN_X86_EMU_IOAPIC)
+#define _XEN_X86_EMU_PIC            5
+#define XEN_X86_EMU_PIC             (1U<<_XEN_X86_EMU_PIC)
+#define _XEN_X86_EMU_VGA            6
+#define XEN_X86_EMU_VGA             (1U<<_XEN_X86_EMU_VGA)
+#define _XEN_X86_EMU_IOMMU          7
+#define XEN_X86_EMU_IOMMU           (1U<<_XEN_X86_EMU_IOMMU)
+#define _XEN_X86_EMU_PIT            8
+#define XEN_X86_EMU_PIT             (1U<<_XEN_X86_EMU_PIT)
+
+#define XEN_X86_EMU_ALL             (XEN_X86_EMU_LAPIC | XEN_X86_EMU_HPET |  \
+                                     XEN_X86_EMU_PM | XEN_X86_EMU_RTC |      \
+                                     XEN_X86_EMU_IOAPIC | XEN_X86_EMU_PIC |  \
+                                     XEN_X86_EMU_VGA | XEN_X86_EMU_IOMMU |   \
+                                     XEN_X86_EMU_PIT)
+    uint32_t emulation_flags;
+};
+#endif
 
 #endif /* !__ASSEMBLY__ */
 

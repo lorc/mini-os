@@ -1,6 +1,8 @@
 #ifndef __GNTTAB_H__
 #define __GNTTAB_H__
 
+//#define __XEN_INTERFACE_VERSION__  0x0003020a
+
 #include <xen/grant_table.h>
 
 void init_gnttab(void);
@@ -12,6 +14,6 @@ unsigned long gnttab_end_transfer(grant_ref_t gref);
 int gnttab_end_access(grant_ref_t ref);
 const char *gnttabop_error(int16_t status);
 void fini_gnttab(void);
-grant_entry_t *arch_init_gnttab(int nr_grant_frames);
+grant_entry_v1_t *arch_init_gnttab(int nr_grant_frames);
 
 #endif /* !__GNTTAB_H__ */

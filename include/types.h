@@ -66,12 +66,6 @@ typedef  int64_t off_t;
 
 typedef intptr_t            ptrdiff_t;
 
-#if defined(__i386__) || defined(__arm__)
-typedef uint32_t register_t;
-#elif defined(__x86_64__) || defined(__aarch64__)
-typedef uint64_t register_t;
-#endif
-
 #ifndef HAVE_LIBC
 typedef long ssize_t;
 #endif
